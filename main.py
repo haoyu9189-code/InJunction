@@ -89,6 +89,8 @@ class MainWindow(QMainWindow):
         self.ui.btn_numpy_merge = QPushButton("合并 NumPy", self.ui.topMenu)
         self.ui.btn_numpy_merge.setObjectName("btn_numpy_merge")
         self.ui.btn_numpy_merge.setMinimumHeight(45)
+        self.ui.btn_numpy_merge.setStyleSheet("background-image: url(:/icons/images/icons/cil-layers.png);")
+        self.ui.btn_numpy_merge.setCursor(Qt.PointingHandCursor)
         self.ui.btn_numpy_merge.setToolTip("合并同格式 NumPy 数据文件")
         self.ui.verticalLayout_8.addWidget(self.ui.btn_numpy_merge)
         self.ui.btn_numpy_merge.clicked.connect(self.open_numpy_merge)

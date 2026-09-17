@@ -35,6 +35,8 @@ def run(app, window, output):
     cacu.signal_window = messages.append
     assert QFile.exists(':/icons/images/icons/icon_close.png'), 'Missing embedded Qt icons'
     assert window.left_grip and window.right_grip
+    assert QFile.exists(':/icons/images/icons/cil-layers.png')
+    assert 'cil-layers.png' in window.ui.btn_numpy_merge.styleSheet()
     window.resize(1280, 900)
     UIFunctions.maximize_restore(window)
     UIFunctions.maximize_restore(window)
