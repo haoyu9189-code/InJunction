@@ -36,7 +36,7 @@ class UIFunctions:
         if not status:
             self.showMaximized()
             GLOBAL_STATE = True
-            self.ui.appMargins.setContentsMargins(0, 0, 0, 0)
+            self.ui.styleSheet.layout().setContentsMargins(0, 0, 0, 0)
             self.ui.maximizeRestoreAppBtn.setToolTip("Restore")
             self.ui.maximizeRestoreAppBtn.setIcon(QIcon(u":/icons/images/icons/icon_restore.png"))
             self.ui.frame_size_grip.hide()
@@ -48,7 +48,7 @@ class UIFunctions:
             GLOBAL_STATE = False
             self.showNormal()
             self.resize(self.width()+1, self.height()+1)
-            self.ui.appMargins.setContentsMargins(10, 10, 10, 10)
+            self.ui.styleSheet.layout().setContentsMargins(10, 10, 10, 10)
             self.ui.maximizeRestoreAppBtn.setToolTip("Maximize")
             self.ui.maximizeRestoreAppBtn.setIcon(QIcon(u":/icons/images/icons/icon_maximize.png"))
             self.ui.frame_size_grip.show()
@@ -248,7 +248,7 @@ class UIFunctions:
             self.bottom_grip = CustomGrip(self, Qt.BottomEdge, True)
 
         else:
-            self.ui.appMargins.setContentsMargins(0, 0, 0, 0)
+            self.ui.styleSheet.layout().setContentsMargins(0, 0, 0, 0)
             self.ui.minimizeAppBtn.hide()
             self.ui.maximizeRestoreAppBtn.hide()
             self.ui.closeAppBtn.hide()
