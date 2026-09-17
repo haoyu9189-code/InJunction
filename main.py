@@ -50,7 +50,7 @@ widgets = None
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, show_startup_message=True):
         QMainWindow.__init__(self)
         # 初始化变量
 
@@ -133,7 +133,8 @@ class MainWindow(QMainWindow):
         # ///////////////////////////////////////////////////////////////
 
         self.showMinimized()
-        cacu.signal_window('load complete!')
+        if show_startup_message:
+            cacu.signal_window('load complete!')
         self.showNormal()
         freeze_support()
         # SET HOME PAGE AND SELECT MENU
@@ -2367,7 +2368,8 @@ if __name__ == '__main__':
     freeze_support()  # 在 Windows 上支持多进程打包
 
     app = QApplication()
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("icon.ico")
+    if sys.platform == "win32":
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("InJunction.IVCompatibility")
     # 创建主窗口并显示
     window = MainWindow()
     sys.exit(app.exec())

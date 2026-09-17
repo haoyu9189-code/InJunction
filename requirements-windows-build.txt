@@ -1,0 +1,20 @@
+# Tested Windows x64 build environment, Python 3.10.
+PySide6==6.5.3
+numpy==1.24.2
+scipy==1.10.1
+matplotlib==3.7.1
+scikit-learn==1.3.1
+Pillow==9.4.0
+pandas==2.0.3
+statsmodels==0.14.0
+nptdms==1.7.1
+numba==0.57.1
+llvmlite==0.40.1
+umap-learn==0.5.4
+pynndescent==0.5.10
+tslearn==0.6.2
+h5py==3.9.0
+pymsgbox==1.0.9
+pyinstaller==6.11.1
+pyinstaller-hooks-contrib==2024.10
+pytest==8.3.5

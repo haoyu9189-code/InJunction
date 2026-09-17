@@ -1,0 +1,3 @@
+Widgets restored from https://github.com/Wanderson-Magalhaes/Modern_GUI_PyDracula_PySide6_or_PyQt6
+Commit: 6701b837bc333fba713f051fa752268aadf0a14e
+License: MIT; original headers preserved.

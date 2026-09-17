@@ -1,3 +1,9 @@
 __pycache__/
 .git/
 .pyc
+.pytest_cache/
+build/
+dist/
+smoke-source/
+smoke-frozen/
+*.log
