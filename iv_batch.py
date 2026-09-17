@@ -20,6 +20,8 @@ def main(argv=None):
     parser.add_argument('--peak-end', type=float, default=-5.)
     parser.add_argument('--sample-points', type=int, default=1000)
     parser.add_argument('--decapacitance', action='store_true')
+    parser.add_argument('--plateau-mode', choices=['auto', 'current', 'legacy'], default='auto',
+                        help='auto retains historical plateau windows for legacy RT channels')
     parser.add_argument('--log-di-range', nargs=2, type=float, default=[-3., 3.],
                         metavar=('MIN', 'MAX'), help='log10 |dI/dV| display range, I in mA')
     parser.add_argument('--current-range', nargs=2, type=float, default=[-1e-6, 1e-6],
@@ -42,13 +44,13 @@ def main(argv=None):
         parser.error('Output directory already exists; choose a new directory')
     report = {'parameters': {'bias_base': args.bias_base, 'peak_start': args.peak_start,
                             'peak_end': args.peak_end, 'sample_points': args.sample_points,
-                            'decapacitance': args.decapacitance, 'log_di_range': args.log_di_range,
+                            'decapacitance': args.decapacitance, 'plateau_mode': args.plateau_mode, 'log_di_range': args.log_di_range,
                             'current_range_mA': args.current_range}, 'files': [], 'status': 'failed'}
     results = []
     for path in paths:
         try:
             result = IVDataProcessUtils.iv_process(path, args.bias_base, args.peak_start, args.peak_end,
-                                                  args.decapacitance, raise_on_error=True)
+                                                  args.decapacitance, raise_on_error=True, plateau_mode=args.plateau_mode)
             if not result[0] or not result[3]:
                 raise ValueError('No complete forward/reverse scans')
             results.append(result)

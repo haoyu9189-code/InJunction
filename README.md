@@ -61,3 +61,7 @@ python iv_batch.py "path/to/TDMS-folder" --output "path/to/new-output-folder"
 ```
 
 Run regression tests with `python -m pytest -q tests -W error::RuntimeWarning` after installing pytest.
+
+The default `--plateau-mode auto` recognizes the verified legacy RT channel names and retains
+the historical plateau filtering windows. Use `--plateau-mode current` to reproduce the prior
+GitHub main branch filtering policy. See the review for the real old/new sample comparisons.

@@ -163,3 +163,48 @@ def test_spawn_worker_reads_and_plots(tmp_path):
     assert len(data[0]) == 1
     assert hist[0].sum() > 0
     assert (tmp_path / 'IVfigdata.png').is_file()
+
+
+LEGACY_RT_NAMES = ['RT-IO:AO1-Bias Volt. [V]', 'RT-PV:Current [mA]', 'RT-PV:Conductance LogG']
+
+
+def test_legacy_rt_transients_and_selected_mean_alignment(tmp_path):
+    rejected = cycle(400)
+    rejected[2][:] = -8
+    accepted = cycle(450)
+    v, _, g = accepted
+    edges = np.flatnonzero(np.diff(np.r_[False, v == .2, False]))
+    for start, stop in zip(edges[::2], edges[1::2]):
+        g[start:start + 100] = 0
+        g[stop - 100:stop] = 0
+    arrays = [np.r_[a, b] for a, b in zip(rejected, accepted)]
+    path = write_tdms(tmp_path / 'legacy.tdms', arrays, names=LEGACY_RT_NAMES,
+                      order=(2, 0, 1), extra=True)
+    _, layout = IV.loadTMDSFile(path, return_layout=True)
+    assert layout == 'legacy-rt'
+    result = IV.iv_process(path, .1, -2.5, -5, False, True)
+    assert [len(a) for a in result] == [1] * 10
+    # The rejected first cycle must not contribute its -8 mean to this retained cycle.
+    assert -4.01 < result[8][0] < -3.9
+    assert result[8] == result[9]
+    with pytest.raises(ValueError, match='No valid IV scans'):
+        IV.iv_process(path, .1, -2.5, -5, False, True, plateau_mode='current')
+
+
+def test_legacy_named_short_plateaus_fall_back_safely(tmp_path):
+    path = write_tdms(tmp_path / 'short-rt.tdms', cycle(39), names=LEGACY_RT_NAMES)
+    assert [len(a) for a in IV.iv_process(path, .1, -2.5, -5, False, True)] == [1] * 10
+
+
+@pytest.mark.skipif(not os.environ.get('IV_OLD_SAMPLE'), reason='Set IV_OLD_SAMPLE for private legacy regression')
+def test_real_old_machine_sample():
+    path = Path(os.environ['IV_OLD_SAMPLE'])
+    arrays, layout = IV.loadTMDSFile(path, return_layout=True)
+    assert layout == 'legacy-rt'
+    assert [len(a) for a in arrays] == [2500000] * 3
+    result = IV.iv_process(path, .1, -2.5, -5, False, True)
+    assert [len(a) for a in result] == [32] * 10
+    for values in result[8:]:
+        assert np.all((np.asarray(values) >= -5) & (np.asarray(values) <= -2.5))
+    current = IV.iv_process(path, .1, -2.5, -5, False, True, plateau_mode='current')
+    assert [len(a) for a in current] == [27] * 10

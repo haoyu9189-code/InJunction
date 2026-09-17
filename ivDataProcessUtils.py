@@ -132,7 +132,7 @@ class IVDataProcessUtils:
     # logger = MyLog("IVDataProcessUtils", BASEDIR)
 
     @classmethod
-    def loadTMDSFile(cls, filePath):
+    def loadTMDSFile(cls, filePath, return_layout=False):
         """
         加载tdms文件（单个）
         :param filePath:
@@ -141,11 +141,13 @@ class IVDataProcessUtils:
         """
         # Prefer semantic names so extra/reordered channels cannot change the mapping.
         aliases = {
-            "bias": {"bias(v)": 1.0, "biasvolt": 1.0, "voltage(v)": 1.0},
+            "bias": {"bias(v)": 1.0, "biasvolt": 1.0, "voltage(v)": 1.0,
+                     "rt-io:ao1-biasvolt.[v]": 1.0},
             "current": {"current(ma)": 1.0, "current(a)": 1000.0,
-                        "current(ua)": 0.001, "current(na)": 0.000001},
-            "cond": {"log(g/g0)": 1.0, "logg": 1.0},
+                        "current(ua)": 0.001, "current(na)": 0.000001, "rt-pv:current[ma]": 1.0},
+            "cond": {"log(g/g0)": 1.0, "logg": 1.0, "rt-pv:conductancelogg": 1.0},
         }
+        layout = "positional"
         with TdmsFile.open(filePath) as tdmsFile:
             matches = []
             groups = tdmsFile.groups()
@@ -163,6 +165,10 @@ class IVDataProcessUtils:
                 if len(mapping) == 3:
                     matches.append(mapping)
             if len(matches) == 1:
+                names = [matches[0][role][0].name.lower().replace(" ", "")
+                         for role in ("bias", "current", "cond")]
+                layout = ("legacy-rt" if names == ["rt-io:ao1-biasvolt.[v]",
+                           "rt-pv:current[ma]", "rt-pv:conductancelogg"] else "named")
                 arrays = [np.asarray(matches[0][role][0][:], dtype=float) * matches[0][role][1]
                           for role in ("bias", "current", "cond")]
             elif not matches and not recognized and len(groups) == 1 and len(groups[0].channels()) == 3:
@@ -175,17 +181,20 @@ class IVDataProcessUtils:
             raise ValueError("IV voltage, current and conductance channels must have equal lengths")
         if not len(arrays[0]):
             raise ValueError("TDMS contains no IV samples")
-        return arrays
+        return (arrays, layout) if return_layout else arrays
 
     @classmethod
-    def hysteresis(cls, filePath, bias_base=0.1, peakStart=-2.5, peakEnd=-5.5):
+    def hysteresis(cls, filePath, bias_base=0.1, peakStart=-2.5, peakEnd=-5.5, plateau_mode="auto"):
         """返回偏压，电导，电流三个二维数组，每一条占用一行
         """
         if not np.isfinite(bias_base) or bias_base == 0:
             raise ValueError("bias_base must be finite and nonzero")
         if not np.isfinite([peakStart, peakEnd]).all() or peakEnd > peakStart:
             raise ValueError("Conductance limits must be finite, with peakEnd <= peakStart")
-        biasVolt, current, cond = cls.loadTMDSFile(filePath)
+        if plateau_mode not in ("auto", "current", "legacy"):
+            raise ValueError("plateau_mode must be auto, current or legacy")
+        (biasVolt, current, cond), layout = cls.loadTMDSFile(filePath, return_layout=True)
+        legacy_plateaus = plateau_mode == "legacy" or (plateau_mode == "auto" and layout == "legacy-rt")
         biasVTrace, currentTrace, condTrace = [], [], []
         diffBiasV = np.concatenate((np.diff(biasVolt), np.array([10.0])))
         # 偏压从0.1到0.2阶跃中0.2v处的索引
@@ -225,6 +234,7 @@ class IVDataProcessUtils:
         condPeakStart = peakStart
         condPeakEnd = peakEnd
         # 寻找电压是0v的起始和终点
+        plateau_means = np.full(biasVTrace.shape[0], np.nan)
         cutStart, cutEnd = np.full(biasVTrace.shape[0], -1, dtype=int), np.full(biasVTrace.shape[0], -1, dtype=int)
         for i in range(biasVTrace.shape[0]):
             trace = np.asarray(biasVTrace[i], dtype=float)
@@ -244,18 +254,28 @@ class IVDataProcessUtils:
                 continue
 
             # 条件3 偏压在2*bias_base时的平均电导必须在范围内
-            # Keep the current release's plateau selection for normal traces.
-            # Single-sample plateaus use that sample instead of an empty slice.
-            cond_start = np.asarray(condTrace[i][:max(1, zero_idx[0] - 1)], dtype=float)
-            cond_end = np.asarray(condTrace[i][zero_idx[-1] + 1:-1], dtype=float)
-            if not len(cond_end):
-                cond_end = np.asarray(condTrace[i][zero_idx[-1] + 1:], dtype=float)
+            # Preserve historical RT plateau windows when the 100-point margins fit.
+            # Short plateaus use the current window, never an empty legacy slice.
+            front_end = zero_idx[0] - 1
+            back_start = zero_idx[-1]
+            back_end = len(trace) - 1
+            if legacy_plateaus and front_end > 200:
+                cond_start = np.asarray(condTrace[i][100:front_end - 100], dtype=float)
+            else:
+                cond_start = np.asarray(condTrace[i][:max(1, front_end)], dtype=float)
+            if legacy_plateaus and back_end - back_start > 200:
+                cond_end = np.asarray(condTrace[i][back_start + 100:back_end - 100], dtype=float)
+            else:
+                cond_end = np.asarray(condTrace[i][back_start + 1:-1], dtype=float)
+                if not len(cond_end):
+                    cond_end = np.asarray(condTrace[i][back_start + 1:], dtype=float)
             cond_start = cond_start[np.isfinite(cond_start)]
             cond_end = cond_end[np.isfinite(cond_end)]
             if not len(cond_start) or not len(cond_end):
                 continue
             cond_start_mean = cond_start.mean()
             cond_end_mean = cond_end.mean()
+            plateau_means[i] = (cond_start_mean + cond_end_mean) / 2
             if cond_start_mean < condPeakEnd or cond_start_mean > condPeakStart or cond_end_mean < condPeakEnd or cond_end_mean > condPeakStart:
                 continue
 
@@ -295,6 +315,7 @@ class IVDataProcessUtils:
         condTrace = condTrace[trueIndex]
         cutStart = cutStart[trueIndex]
         cutEnd = cutEnd[trueIndex]
+        plateau_means = plateau_means[trueIndex]
         # 再次检查！！！
         if biasVTrace.shape[0] == 0:
             return (None,) * 5
@@ -323,7 +344,9 @@ class IVDataProcessUtils:
         # biasVData = biasVData[tureIdx]
         # currentData = currentData[tureIdx]
         # condData = condData[tureIdx]
-        meanCond = [data[0] for data in condData]
+        # Historical code forgot to filter meanCond along with the selected scans.
+        # Keep those means aligned here; current mode retains its existing auxiliary field.
+        meanCond = plateau_means if legacy_plateaus else [data[0] for data in condData]
         # currentData_so = currentData_so[tureIdx]
 
         # 再次检查！！！
@@ -378,7 +401,7 @@ class IVDataProcessUtils:
                 forward[3], reverse[3], forward[4], reverse[4])
 
     @classmethod
-    def iv_process(cls, tdms_file, bias_base, peakStart, peakEnd, de_capicity, raise_on_error=False):
+    def iv_process(cls, tdms_file, bias_base, peakStart, peakEnd, de_capicity, raise_on_error=False, plateau_mode="auto"):
         """
         Process IV curve data.
 
@@ -389,6 +412,8 @@ class IVDataProcessUtils:
             peakEnd (float): Peak end value.
             de_capicity (int): De-capacity value.
             raise_on_error (bool): Raise a file-specific error instead of returning [].
+            plateau_mode (str): auto selects historical windows for known legacy RT channels;
+                current/legacy explicitly select a plateau policy.
 
         Returns:
             Tuple: A tuple containing processed biasVDataFor, currentDataFor, condDataFor,
@@ -399,7 +424,8 @@ class IVDataProcessUtils:
             currentData, condData, biasVData, currentData_source, meanCond = IVDataProcessUtils.hysteresis(tdms_file,
                                                                                                            bias_base=bias_base,
                                                                                                            peakStart=peakStart,
-                                                                                                           peakEnd=peakEnd)
+                                                                                                           peakEnd=peakEnd,
+                                                                                                           plateau_mode=plateau_mode)
 
             if biasVData is None:
                 raise ValueError(
