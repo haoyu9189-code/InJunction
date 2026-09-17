@@ -60,6 +60,50 @@ def run(app, window, output):
     app.processEvents()
     assert window.grab().save(str(output / 'gui-iv.png'))
 
+    # Open the real menu button and drive the modal dialog and its background worker.
+    import shutil
+    from PySide6.QtCore import QTimer
+    from numpy_merge_dialog import NumpyMergeDialog
+    first = exports[0]
+    second = output / 'merge-copy.npz'
+    shutil.copyfile(first, second)
+    merged_path = output / 'merged.npz'
+    dialog_errors = []
+
+    def drive_merge_dialog():
+        dialog = app.activeModalWidget()
+        try:
+            assert isinstance(dialog, NumpyMergeDialog)
+            dialog.add_paths([str(first), str(second), str(first)])
+            assert dialog.files.count() == 2
+            dialog.files.setCurrentRow(1)
+            dialog.move_current(-1)
+            assert dialog.files.item(0).text() == str(second.resolve())
+            dialog.begin_merge([str(second), str(first)], str(merged_path))
+
+            def finish():
+                try:
+                    assert '合并完成' in dialog.status.text(), dialog.status.text()
+                    app.processEvents()
+                    assert dialog.grab().save(str(output / 'gui-numpy-merge.png'))
+                except Exception as exc:
+                    dialog_errors.append(str(exc))
+                finally:
+                    dialog.accept()
+            dialog.worker.finished.connect(finish)
+        except Exception as exc:
+            dialog_errors.append(str(exc))
+            if dialog:
+                dialog.reject()
+
+    QTimer.singleShot(0, drive_merge_dialog)
+    window.ui.btn_numpy_merge.click()
+    assert not dialog_errors, dialog_errors
+    with np.load(merged_path, allow_pickle=False) as merged, np.load(first) as original:
+        for key in ('distance_array', 'conductance_array', 'length_array'):
+            np.testing.assert_array_equal(merged[key], np.concatenate([original[key], original[key]]))
+        np.testing.assert_array_equal(merged['additional_length'], original['additional_length'])
+
     # Exercise lazy imports and compiled numerical dependencies inside the frozen EXE.
     import umap
     from tslearn.clustering import TimeSeriesKMeans, KShape
@@ -74,6 +118,7 @@ def run(app, window, output):
     report = {'status': 'passed', 'gui_constructed': True, 'embedded_icons': True,
               'window_grips': True, 'spawn_processing': True, 'old_and_new_synthetic_scans': 2,
               'forward_shape': [2, 1000], 'reverse_shape': [2, 1000],
+              'numpy_merge_dialog': True, 'numpy_merge_rows': 4,
               'npz_exports': len(exports), 'numba_jit': True, 'umap': True,
               'tslearn_import': True, 'tslearn_kmeans': True, 'messages': messages}
     (output / 'report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')

@@ -4,7 +4,8 @@ from PIL.ImageShow import show
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.metrics import calinski_harabasz_score
-from PySide6.QtWidgets import QMainWindow
+from PySide6.QtWidgets import QMainWindow, QPushButton
+from numpy_merge_dialog import NumpyMergeDialog
 from PySide6 import QtGui
 from PySide6.QtCore import Qt
 from PIL import Image
@@ -85,6 +86,12 @@ class MainWindow(QMainWindow):
         # ///////////////////////////////////////////////////////////////
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+        self.ui.btn_numpy_merge = QPushButton("合并 NumPy", self.ui.topMenu)
+        self.ui.btn_numpy_merge.setObjectName("btn_numpy_merge")
+        self.ui.btn_numpy_merge.setMinimumHeight(45)
+        self.ui.btn_numpy_merge.setToolTip("合并同格式 NumPy 数据文件")
+        self.ui.verticalLayout_8.addWidget(self.ui.btn_numpy_merge)
+        self.ui.btn_numpy_merge.clicked.connect(self.open_numpy_merge)
         global widgets
         widgets = self.ui
 
@@ -803,6 +810,9 @@ class MainWindow(QMainWindow):
         # 目标文件夹,去除绝对路径
         folder_path = os.path.dirname(save_path_image1)
         return folder_path
+
+    def open_numpy_merge(self):
+        NumpyMergeDialog(self).exec()
 
     def Save_iv(self):
         if self.his_Reve:
