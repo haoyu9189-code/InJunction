@@ -73,11 +73,11 @@ GitHub 当前基准版本已改用平台实际范围，所以未经本次修复�
 
 真实旧样本已补验，见上节。新增回归覆盖旧通道重排、短平台回退、平台瞬态对筛选的影响，以及筛除轨迹后平均电导的正确对齐。
 
-未在 Windows 上运行原始 EXE 或进行完整 Qt 界面验收。GUI 回调通过实际函数配合轻量控件/进程池替身进行错误路径测试；这不等同于 Windows 图形界面的端到端测试。
+已在 Windows Server 2022 / Python 3.10 上完成 34 个公开回归测试（2 个私有数据测试仅在本地运行），并分别验收源代码和实际打包后的单文件 EXE：创建 Qt 窗口、最大化/恢复、生成新旧协议 TDMS、通过真实 GUI 回调调用多进程 IV 处理、绘图、导出并回读 8 个 NPZ；另验证 Numba JIT、UMAP 和 tslearn。实际 EXE 的 `build-verification.json` 为 passed。此验收使用合成样本；真实新旧实验数据的回归在本地完成，未上传实验数据。尚未在实验室目标 Windows 电脑上人工操作全部功能。
 
 ## 其他 review 发现与优化顺序
 
-1. **P1：仓库无法直接完整重建 GUI。** `main.py:2` 导入 `widgets`，`modules/ui_functions.py` 使用 `CustomGrip`，但 Git 仓库缺少整个 `widgets` 目录；`setup.py:5` 还要求缺失的 `themes/`。需要从原完整工程恢复并纳入版本控制，之后才能交付可靠的 Windows EXE。本次没有凭空重写 UI 组件。
+1. **已修复：GUI 打包缺失组件。** 从原 PyDracula 上游恢复 `widgets/CustomGrip` 并保留 MIT 许可和来源，解除界面辅助模块对 `main` 的循环导入，修正最大化时不存在的 `appMargins` 引用。新的 `launcher.py` / `InJunction.spec` 构建入口已通过 Windows 验收；旧 `setup.py` 仍不是推荐的构建入口。
 2. **P2：主界面仍会在处理期间阻塞。** `run_file_button_iv` 在 GUI 线程调用 `result.get()`；虽有多进程，界面线程仍等待。建议后续用 Qt worker + signals 更新进度并支持取消；本次先修复崩溃和进程清理。
 3. **P2：小样本降维缺少参数约束。** `object_data_dimension_reduction` 固定 t-SNE `perplexity=60`、PCA `n_components=3`；筛选后样本不多于 60 或维数不足时会失败。应在调用前检查样本/特征数，并给出可操作提示。
 4. **P2：分组分析静默丢弃尾部数据。** `new_function.divide` 使用 `len(conductance)//cacu_num`，最后不足一组的曲线不参与统计；源码注释显示这是原设计。应在 UI 明确显示丢弃数量，或增加是否保留最后一组的选项，以免用户误以为使用了全部曲线。
@@ -111,3 +111,11 @@ python -m pytest -q tests -W error::RuntimeWarning
 ```
 
 设置环境变量 `IV_SAMPLE_DIR` 为新样本解压目录后，执行 3 个真实新样本的 99/88/80 条扫描回归；设置 `IV_OLD_SAMPLE` 为提供的旧 TDMS 文件路径后，执行旧样本 auto 模式 32 条和 current 模式 27 条回归。未设置时各自对应的私有样本测试跳过。原始实验数据没有加入代码仓库。
+
+## Windows EXE 交付（2026-09-17）
+
+- EXE 对应源码：`a674a053f715ffbd4378acf8c0e557d98659cd63`，开发分支 `build/windows-exe`。
+- 构建与实际 EXE 验收：[GitHub Actions 35206149479](https://github.com/haoyu9189-code/InJunction/actions/runs/35206149479)。EXE 构建、运行验收和安装包上传均成功；该次运行最终显示失败，仅因附加日志上传跨越 C:/D: 盘，后续工作流提交已移除跨盘路径。
+- 交付 `InJunction-Windows-x64.zip`，包括单文件 EXE、中文说明、许可、源码 commit、SHA256 和实际 EXE 验收报告。目标为 Windows x64，无须安装 Python。
+- 构建命令：使用 Python 3.10 安装 `requirements-windows-build.txt`，运行 `python -m PyInstaller --noconfirm --clean InJunction.spec`。启动入口为 `launcher.py`。
+- `launcher.py` 在导入 Qt / 科学计算库前调用 `multiprocessing.freeze_support()`，工作目录及日志使用 `%LOCALAPPDATA%/InJunction`，避免从只读安装目录启动时无法写入。
