@@ -1,0 +1,62 @@
+name: Windows EXE
+on:
+  push:
+    branches: [build/windows-exe]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      MPLBACKEND: Agg
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+          cache-dependency-path: requirements-windows-build.txt
+      - name: Install pinned build dependencies
+        run: python -m pip install -r requirements-windows-build.txt
+      - name: Regression tests
+        run: python -m pytest -q tests -W error::RuntimeWarning
+      - name: Source GUI and IV smoke test
+        run: python launcher.py --self-test smoke-source
+      - name: Build single-file EXE
+        run: python -m PyInstaller --noconfirm --clean InJunction.spec
+      - name: Verify actual frozen EXE
+        run: |
+          python -c "import subprocess; subprocess.run(['dist/InJunction.exe', '--self-test', 'smoke-frozen'], check=True, timeout=420)"
+          Get-Content smoke-frozen/report.json
+      - name: Package verified EXE
+        run: |
+          New-Item -ItemType Directory -Force dist/InJunction-Windows-x64
+          Copy-Item dist/InJunction.exe dist/InJunction-Windows-x64/
+          Copy-Item docs/WINDOWS_README.txt dist/InJunction-Windows-x64/README.txt
+          Copy-Item LICENSE dist/InJunction-Windows-x64/
+          Copy-Item -Recurse licenses dist/InJunction-Windows-x64/licenses
+          Copy-Item smoke-frozen/report.json dist/InJunction-Windows-x64/build-verification.json
+          Set-Content -Path dist/InJunction-Windows-x64/build-commit.txt -Value '${{ github.sha }}' -Encoding utf8
+          Get-FileHash dist/InJunction.exe -Algorithm SHA256 | Format-List | Out-File dist/InJunction-Windows-x64/SHA256.txt -Encoding utf8
+          Compress-Archive -Path dist/InJunction-Windows-x64/* -DestinationPath dist/InJunction-Windows-x64.zip
+      - name: Upload verified Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: InJunction-Windows-x64
+          path: dist/InJunction-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-verification
+          path: |
+            smoke-source/
+            smoke-frozen/
+            build/InJunction/warn-InJunction.txt
+            ~/AppData/Local/InJunction/InJunction.log
+          retention-days: 30
