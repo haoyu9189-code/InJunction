@@ -58,5 +58,4 @@ jobs:
             smoke-source/
             smoke-frozen/
             build/InJunction/warn-InJunction.txt
-            ~/AppData/Local/InJunction/InJunction.log
           retention-days: 30
