@@ -1,0 +1,7 @@
+# Headless IV processing and plotting (no Qt / clustering extras).
+numpy>=1.24,<3
+scipy>=1.10,<2
+matplotlib>=3.7,<4
+scikit-learn>=1.3,<2
+nptdms>=1.7,<2
+statsmodels>=0.14,<0.15

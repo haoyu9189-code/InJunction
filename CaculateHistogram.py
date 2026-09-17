@@ -6,9 +6,6 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.metrics import calinski_harabasz_score
 from sklearn.mixture import GaussianMixture
-import pymsgbox
-from tslearn.clustering import TimeSeriesKMeans
-from tslearn.clustering import KShape
 from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
 from scipy.stats import norm
@@ -196,14 +193,23 @@ def calculate_his(conductance, bins_1Dcon=1000, low_cut_1Dcon=-6, high_cut_1Dcon
 
 
 def plt_2dIV(biasV_list, current_list,bin_1dhis=400, bin_2dhis=200, threshold=255, range_y=None):
-    x = [item for sublist in biasV_list for item in sublist]
-    y = [item for sublist in current_list for item in sublist]
-    # 计算二维直方图，并同时得到 x_edges 和 y_edges
+    if len(biasV_list) != len(current_list) or any(
+            len(x) != len(y) for x, y in zip(biasV_list, current_list)):
+        raise ValueError("IV histogram voltage/current traces must have matching lengths")
+    x = np.asarray([item for sublist in biasV_list for item in sublist], dtype=float)
+    y = np.asarray([item for sublist in current_list for item in sublist], dtype=float)
+    finite_x = x[np.isfinite(x)]
+    if not len(finite_x):
+        raise ValueError("No finite IV voltage samples to plot")
+    valid = np.isfinite(x) & np.isfinite(y)
     if range_y is None:
-        hist, x_edges, y_edges = np.histogram2d(x, y, bins=[bin_1dhis, bin_2dhis])
+        if not valid.any():
+            raise ValueError("No finite paired IV samples to plot")
+        hist, x_edges, y_edges = np.histogram2d(x[valid], y[valid], bins=[bin_1dhis, bin_2dhis])
     else:
-        range_x = [min(x), max(x)]
-        hist, x_edges, y_edges = np.histogram2d(x, y, bins=[bin_1dhis, bin_2dhis], range=[range_x, range_y])
+        range_x = [finite_x.min(), finite_x.max()]
+        hist, x_edges, y_edges = np.histogram2d(
+            x[valid], y[valid], bins=[bin_1dhis, bin_2dhis], range=[range_x, range_y])
     # 实际投影的范围
     his2d_edg_list = [x_edges, y_edges]
     # 将大于阈值的部分设置为饱和红色所对应的最大数据值
@@ -264,12 +270,14 @@ def chose_cluster(conductance_normalized, clusters_way=0, n_clusters=2):
         labels = gaussian_cluster.predict(conductance_normalized)
 
     elif clusters_way == 2:
+        from tslearn.clustering import KShape
         seed = 0
         np.random.seed(seed)
         ks = KShape(n_clusters=n_clusters, verbose=True, random_state=seed)
         labels = ks.fit_predict(conductance_normalized)
 
     elif clusters_way == 3:
+        from tslearn.clustering import TimeSeriesKMeans
         seed = 0
         np.random.seed(seed)
         ks = TimeSeriesKMeans(n_clusters=n_clusters, verbose=True, random_state=seed)
@@ -821,6 +829,7 @@ def save_data(data, paths):
 
 
 def signal_window(text):
+    import pymsgbox
     # 弹出信息窗口
     pymsgbox.alert(text, 'Tips')
 

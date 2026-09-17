@@ -370,7 +370,7 @@ class MainWindow(QMainWindow):
         if a0:
             for i in a0.mimeData().urls():
                 print(i.path())
-                file_path = i.path()[1:]
+                file_path = i.toLocalFile()
                 self.ui.lineEdit.setText(file_path)
                 self.ui.lineEdit_3.setText(file_path)
                 self.ui.lineEdit_4.setText(file_path)
@@ -399,7 +399,8 @@ class MainWindow(QMainWindow):
             print("Processed file path:", sourcePath)
 
             # 打开文件
-            tdms_files = glob.glob(os.path.join(sourcePath, '*.tdms'))
+            tdms_files = sorted(path for path in glob.glob(os.path.join(sourcePath, '*'))
+                                if os.path.isfile(path) and path.lower().endswith('.tdms'))
 
             # 计算并打印原始数据文件的数量
             print("Number of TDMS files found:", len(tdms_files))
@@ -436,90 +437,113 @@ class MainWindow(QMainWindow):
                          self.ui.doubleSpinBox_14.property("value") * 1e-6]
             sample_point = 1000
             # 创建进程池
-            pool = multiprocessing.Pool(multiprocessing.cpu_count() - 1)
-            results = []
-            # 遍历每个 tdms_file
-            for tdms_file in tdms_files:
-                result = pool.apply_async(func=IVDataProcessUtils.iv_process,
-                                          args=(tdms_file,),
-                                          kwds={"bias_base": bias_base,
-                                                "peakStart": peakStart,
-                                                "peakEnd": peakEnd,
-                                                "de_capicity": self.ui.checkBox_2.isChecked()})
+            try:
+                with multiprocessing.Pool(max(1, min(len(tdms_files), multiprocessing.cpu_count() - 1))) as pool:
+                    results = []
+                    # 遍历每个 tdms_file
+                    for tdms_file in tdms_files:
+                        result = pool.apply_async(func=IVDataProcessUtils.iv_process,
+                                                  args=(tdms_file,),
+                                                  kwds={"bias_base": bias_base,
+                                                        "peakStart": peakStart,
+                                                        "peakEnd": peakEnd,
+                                                        "de_capicity": self.ui.checkBox_2.isChecked(),
+                                                        "raise_on_error": True})
 
-                results.append(result)
-                print(f'file {tdms_file} is processed')
+                        results.append(result)
+                        print(f'Processing file: {tdms_file}')
 
-            for result in results:
-                # 如果返回值不为空
-                if result.get():
-                    # 解包返回值
-                    (biasVDataFor, currentDataFor, condDataFor, biasVDataReve, currentDataReve, condDataReve,
-                     currentData_sourceFor, currentData_sourceReve, meanCond_sourceFor_new,
-                     meanCond_sourceReve) = result.get()
+                    failures = []
+                    for tdms_file, result in zip(tdms_files, results):
+                        try:
+                            processed = result.get()
+                        except Exception as exc:
+                            failures.append(str(exc))
+                            print(f"IV processing failed: {exc}")
+                            continue
+                        if processed and processed[0] and processed[3]:
+                            # 解包返回值
+                            (biasVDataFor, currentDataFor, condDataFor, biasVDataReve, currentDataReve, condDataReve,
+                             currentData_sourceFor, currentData_sourceReve, meanCond_sourceFor_new,
+                             meanCond_sourceReve) = processed
 
-                    # 添加到相应的列表中
-                    biasVDataFor_list.append(biasVDataFor)
-                    currentDataFor_list.append(currentDataFor)
-                    condDataFor_list.append(condDataFor)
-                    currentData_sourceFor_list.append(currentData_sourceFor)
-                    self.meanCond_sourceFor_list.append(meanCond_sourceFor_new)
+                            # 添加到相应的列表中
+                            biasVDataFor_list.append(biasVDataFor)
+                            currentDataFor_list.append(currentDataFor)
+                            condDataFor_list.append(condDataFor)
+                            currentData_sourceFor_list.append(currentData_sourceFor)
+                            self.meanCond_sourceFor_list.append(meanCond_sourceFor_new)
 
-                    biasVDataReve_list.append(biasVDataReve)
-                    currentDataReve_list.append(currentDataReve)
-                    condDataReve_list.append(condDataReve)
-                    currentData_sourceReve_list.append(currentData_sourceReve)
-                    self.meanCond_sourceReve_list.append(meanCond_sourceReve)
+                            biasVDataReve_list.append(biasVDataReve)
+                            currentDataReve_list.append(currentDataReve)
+                            condDataReve_list.append(condDataReve)
+                            currentData_sourceReve_list.append(currentData_sourceReve)
+                            self.meanCond_sourceReve_list.append(meanCond_sourceReve)
 
-            # 打开两张图片。侧面写上名字，并合并绘制并显示
-            label1 = 'Forward(splicing)'
-            label2 = 'Reverse(continuous)'
-            folder_name = "png_images"
+                        else:
+                            failures.append(f"{os.path.basename(tdms_file)}: No complete forward/reverse scans")
+                    if not biasVDataFor_list or not biasVDataReve_list:
+                        details = "\n".join(failures[:5])
+                        raise ValueError("No valid IV scans. Check bias and conductance limits.\n" + details)
+                    if failures:
+                        cacu.signal_window(f"Skipped {len(failures)} of {len(tdms_files)} files:\n" + "\n".join(failures[:5]))
 
-            # 处理正扫
-            result1 = pool.apply_async(func=cacu_3fig,
-                                       args=(biasVDataFor_list, currentDataFor_list, condDataFor_list,
-                                             currentData_sourceFor_list,),
-                                       kwds={
-                                           # 传递其他参数
-                                           "butter_parameter": butter_parameter,
-                                           "sample_point": sample_point,
-                                           "label": label1,
-                                           "bin_2dhis": bin_2dhis,
-                                           "bin_1dhis": bin_1dhis,
-                                           "threshold": threshold,
-                                           "logI_min_max": logI_min_max,
-                                           "logdI_min_max": logdI_min_max,
-                                           "logG_min_max": logG_min_max,
-                                           "I_min_max": I_min_max,
-                                           "color_2d": self.ui.color_style_2d.currentText()
-                                       })
-            result2 = pool.apply_async(func=cacu_3fig,
-                                       args=(biasVDataReve_list, currentDataReve_list, condDataReve_list,
-                                             currentData_sourceReve_list,),
-                                       kwds={
-                                           # 传递其他参数
-                                           "butter_parameter": butter_parameter,
-                                           "sample_point": sample_point,
-                                           "label": label2,
-                                           "bin_2dhis": bin_2dhis,
-                                           "bin_1dhis": bin_1dhis,
-                                           "threshold": threshold,
-                                           "logI_min_max": logI_min_max,
-                                           "logdI_min_max": logdI_min_max,
-                                           "logG_min_max": logG_min_max,
-                                           "I_min_max": I_min_max,
-                                           "color_2d": self.ui.color_style_2d.currentText()
-                                       })
+                    # 打开两张图片。侧面写上名字，并合并绘制并显示
+                    label1 = 'Forward(splicing)'
+                    label2 = 'Reverse(continuous)'
+                    folder_name = "png_images"
 
-            self.his_For, self.data_For = result1.get()
-            self.his_Reve, self.data_Reve = result2.get()
+                    # 处理正扫
+                    result1 = pool.apply_async(func=cacu_3fig,
+                                               args=(biasVDataFor_list, currentDataFor_list, condDataFor_list,
+                                                     currentData_sourceFor_list,),
+                                               kwds={
+                                                   # 传递其他参数
+                                                   "butter_parameter": butter_parameter,
+                                                   "sample_point": sample_point,
+                                                   "label": label1,
+                                                   "bin_2dhis": bin_2dhis,
+                                                   "bin_1dhis": bin_1dhis,
+                                                   "threshold": threshold,
+                                                   "logI_min_max": logI_min_max,
+                                                   "logdI_min_max": logdI_min_max,
+                                                   "logG_min_max": logG_min_max,
+                                                   "I_min_max": I_min_max,
+                                                   "color_2d": self.ui.color_style_2d.currentText()
+                                               })
+                    result2 = pool.apply_async(func=cacu_3fig,
+                                               args=(biasVDataReve_list, currentDataReve_list, condDataReve_list,
+                                                     currentData_sourceReve_list,),
+                                               kwds={
+                                                   # 传递其他参数
+                                                   "butter_parameter": butter_parameter,
+                                                   "sample_point": sample_point,
+                                                   "label": label2,
+                                                   "bin_2dhis": bin_2dhis,
+                                                   "bin_1dhis": bin_1dhis,
+                                                   "threshold": threshold,
+                                                   "logI_min_max": logI_min_max,
+                                                   "logdI_min_max": logdI_min_max,
+                                                   "logG_min_max": logG_min_max,
+                                                   "I_min_max": I_min_max,
+                                                   "color_2d": self.ui.color_style_2d.currentText()
+                                               })
 
-            # 保存图像并显示在UI上
-            self.image_path_For = os.path.join(folder_name, f'IVfig{label1}.png')
-            self.image_path_Reve = os.path.join(folder_name, f'IVfig{label2}.png')
-            pool.close()
-            pool.join()  # 等待所有进程完成
+                    self.his_For, self.data_For = result1.get()
+                    self.his_Reve, self.data_Reve = result2.get()
+
+                    # 保存图像并显示在UI上
+                    self.image_path_For = os.path.join(folder_name, f'IVfig{label1}.png')
+                    self.image_path_Reve = os.path.join(folder_name, f'IVfig{label2}.png')
+            except Exception as exc:
+                self.his_For = self.his_Reve = self.data_For = self.data_Reve = None
+                self.meanCond_sourceFor_list = []
+                self.meanCond_sourceReve_list = []
+                self.image_path_For = self.image_path_Reve = None
+                self.ui.progressBar_5.setValue(0)
+                cacu.signal_window(f"IV processing failed:\n{exc}")
+                self.showNormal()
+                return
             # 绘制大图
             fig, axes = plt.subplots(2, 1, figsize=(18, 8))
             for i in range(2):
@@ -536,6 +560,7 @@ class MainWindow(QMainWindow):
             # 显示图像叠加后的结果
             merged_image_path = os.path.join(folder_name, 'iv_merged_image.png')
             plt.savefig(merged_image_path, dpi=110, bbox_inches='tight')
+            plt.close(fig)
             self.initUI(self.ui.label_iv, merged_image_path)
 
             self.ui.progressBar_5.setValue(100)

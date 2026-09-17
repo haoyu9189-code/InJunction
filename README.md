@@ -48,3 +48,16 @@ pyinstaller -F --icon=icon.ico main.py --hidden-import matplotlib.backends.backe
 ![13](https://github.com/user-attachments/assets/25a9f7d4-e4cc-47a4-85da-51edf18faac8)
 
 
+
+## IV compatibility update
+
+For short check plateaus from newer acquisition systems, diagnostics, regression coverage,
+and current GUI packaging limitations, see [IV compatibility review](docs/IV_COMPATIBILITY_REVIEW.md).
+A headless processor is available without the Qt assets:
+
+```sh
+python -m pip install -r requirements-iv.txt
+python iv_batch.py "path/to/TDMS-folder" --output "path/to/new-output-folder"
+```
+
+Run regression tests with `python -m pytest -q tests -W error::RuntimeWarning` after installing pytest.
